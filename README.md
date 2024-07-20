@@ -1,0 +1,1 @@
+Inspiration https://github.com/mixpanel/mixpanel-js/tree/master

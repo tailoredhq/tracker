@@ -6,11 +6,21 @@
       endpoint: 'http://localhost:4000/track',
       batchSize: 10,
       flushInterval: 10000, // 5 seconds for easier debugging
-      debug: true  // Enable debug mode by default
+      debug: true,  // Enable debug mode by default
+
+      // cookies
+      visitorIdCookie: 'yt_visitor_id',
+      userIdCookie: 'yt_user_id',
+      localStorageKeyPrefix: 'yt_',
+      cookieExpiry: 365 * 24 * 60 * 60 * 1000, // 1 year in milliseconds
     };
 
     this.visitorId = localStorage.getItem('yt_visitorId') || this.generateUUID();
     localStorage.setItem('yt_visitorId', this.visitorId);
+
+    const test = this.generateUUID();
+    console.log('--->', test)
+    
     this.flushIntervalId = null;  // Add this line
     this.initialized = false;
     this.debug('YourTracker instantiated');
@@ -18,7 +28,6 @@
 
   YourTracker.prototype = {
     init: function(clientId, options) {
-      console.log('--------------------------------------- INIT ---------------------------------------')
       if (this.initialized) {
         this.debug('Tracker already initialized');
         return;
@@ -51,6 +60,97 @@
       });
     },
 
+    /**
+     * Setting / Getting visitorId and userId
+     */
+    getVisitorId: function() {
+      // var visitorId = this.getCookie(this.config.visitorIdCookie) || this.getLocalStorage(this.config.localStorageKeyPrefix + 'visitor_id');
+      console.log("HERE", visitorId)
+      // if (!visitorId) {
+      //   visitorId = this.generateUUID();
+      //   this.setVisitorId(visitorId);
+      // }
+      // return visitorId;
+    },
+    getUserId: function() {
+      return this.getCookie(this.config.userIdCookie) || this.getLocalStorage(this.config.localStorageKeyPrefix + 'user_id') || null;
+    },
+    setVisitorId: function() {
+      this.setCookie(this.config.visitorIdCookie, visitorId, this.config.cookieExpiry);
+      this.setLocalStorage(this.config.localStorageKeyPrefix + 'visitor_id', visitorId);
+    },
+    setUserId: function() {
+      if (userId) {
+        this.setCookie(this.config.userIdCookie, userId, this.config.cookieExpiry);
+        this.setLocalStorage(this.config.localStorageKeyPrefix + 'user_id', userId);
+      } else {
+        this.deleteCookie(this.config.userIdCookie);
+        this.removeLocalStorage(this.config.localStorageKeyPrefix + 'user_id');
+      }
+      this.userId = userId;
+    },
+
+    // Cookie and LocalStorage helpers
+    setCookie: function(name, value, expiryMs) {
+      var date = new Date();
+      date.setTime(date.getTime() + expiryMs);
+      var expires = "expires=" + date.toUTCString();
+      document.cookie = name + "=" + value + ";" + expires + ";path=/;SameSite=Lax";
+    },
+  
+    getCookie: function(name) {
+      // Add the '=' to the name to ensure we match the full cookie name
+      name = name + "=";
+      // Split the cookie string into an array of individual cookies
+      var decodedCookie = decodeURIComponent(document.cookie);
+      var cookieArray = decodedCookie.split(';');
+      
+      // Loop through the array to find our specific cookie
+      for (var i = 0; i < cookieArray.length; i++) {
+        var cookie = cookieArray[i];
+        // Remove any leading spaces
+        while (cookie.charAt(0) == ' ') {
+          cookie = cookie.substring(1);
+        }
+        // If we find the cookie name at the start of the string, return its value
+        if (cookie.indexOf(name) == 0) {
+          return cookie.substring(name.length, cookie.length);
+        }
+      }
+      // Return null if the cookie wasn't found
+      return null;
+    },
+  
+    deleteCookie: function(name) {
+      document.cookie = name + "=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    },
+
+    setLocalStorage: function(key, value) {
+      try {
+        localStorage.setItem(key, value);
+      } catch (e) {
+        console.warn('Local storage is not available:', e);
+      }
+    },
+  
+    getLocalStorage: function(key) {
+      try {
+        return localStorage.getItem(key);
+      } catch (e) {
+        console.warn('Local storage is not available:', e);
+        return null;
+      }
+    },
+  
+    removeLocalStorage: function(key) {
+      try {
+        localStorage.removeItem(key);
+      } catch (e) {
+        console.warn('Local storage is not available:', e);
+      }
+    },
+
+    // Actually tracking functions
     track: function(eventName, eventData) {
       this.debug('Tracking event:', eventName, eventData);
       this.addToQueue({
@@ -62,17 +162,39 @@
 
     identify: function(userId, userProperties) {
       this.debug('Identifying user:', userId, userProperties);
+
+      // store current visitorId to send to server
+      visitorId = this.visitorId
+
+      // update visitor id with userId
       this.visitorId = userId;
       localStorage.setItem('yt_visitorId', this.visitorId);
 
-      console.log('--------------------------------------- IDENTIFY ---------------------------------------')
+      //  send event to server directly on identify, don't queue
+      fetch(this.config.endpoint, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          clientId: this.config.clientId,
+          visitorId,
+          events: [{
+            action: 'identify',
+            name: 'user_identified',
+            data: {},
+            userId: `${userId}`,
+            userProperties,
+            timestamp: new Date().toISOString()
+          }],
+          clientInfo: this.collectClientInfo()
+        }),
+      }).then(response => {
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
 
-      this.addToQueue({
-        action: 'identify',
-        eventName: 'user_identified',
-        eventData: {},
-        userId,
-        userProperties
+        return response.json();
+      }).catch(error => {
+        this.debug('Identify network error:', error);
       });
     },
 
@@ -193,6 +315,8 @@
       this.debug('Setting up click tracking');
       document.addEventListener('click', (e) => {
         let target = e.target;
+        console.log('---------------------------------------')
+        console.log(target)
         this.track('click', {
           element: {
             tagName: target.tagName.toLowerCase(),
@@ -259,28 +383,25 @@
         }
       });
 
-      /**
-       * // Then, fetch the country information
-        fetch('https://ipapi.co/json/')
-          .then(response => response.json())
-          .then(data => {
-            const locationProperties = {
-              country: data.country_name,
-              countryCode: data.country_code,
-              region: data.region,
-              city: data.city,
-              latitude: data.latitude,
-              longitude: data.longitude,
-              ip: data.ip
-            };
+      // Then, fetch the country information
+      fetch('https://ipapi.co/json/')
+        .then(response => response.json())
+        .then(data => { 
+          const locationProperties = {
+            country: data.country_name,
+            countryCode: data.country_code,
+            region: data.region,
+            city: data.city,
+            latitude: data.latitude,
+            longitude: data.longitude,
+            ip: data.ip
+          };
 
-            // Track the location properties separately
-            this.track('user_location', locationProperties);
-          })
-          .catch(error => {
-            this.debug('Error fetching location data:', error);
-          });
-       */
+          // Track the location properties separately
+          this.track('user_location', locationProperties);
+        }).catch(error => {
+          this.debug('Error fetching location data:', error);
+        });
     },
 
     processQueue: function() {
