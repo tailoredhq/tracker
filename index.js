@@ -1,9 +1,11 @@
+const API_ENDPOINT = "http://localhost:3000/track"
+
 (function(window, document) {
   var YourTracker = function() {
     this.queue = [];
     this.config = {
       clientId: null,
-      endpoint: 'http://localhost:3000/track',
+      endpoint: API_ENDPOINT,
       batchSize: 10,
       flushInterval: 10000
     };
@@ -113,6 +115,8 @@
       for (var i = 0; i < globalQueue.length; i++) {
         this[globalQueue[i][0]].apply(this, globalQueue[i].slice(1));
       }
+      // Clear the queue
+      window.ytTracker.q = [];
     }
   };
 
@@ -120,8 +124,15 @@
   
   // Replace the global ytTracker function with our instance methods
   window.ytTracker = function() {
-    return instance[arguments[0]].apply(instance, Array.prototype.slice.call(arguments, 1));
+    if (instance[arguments[0]]) {
+      return instance[arguments[0]].apply(instance, Array.prototype.slice.call(arguments, 1));
+    } else {
+      console.warn("Method " + arguments[0] + " does not exist on YourTracker");
+    }
   };
+
+  // Process any queued commands
+  instance.processQueue();
 
   // Also expose the instance directly for advanced usage
   window.YourTracker = instance;
