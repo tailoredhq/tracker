@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tracker Debug</title>
+</head>
+<body>
+    <h1>Tracker Debug Page</h1>
+    <button id="testButton">Test Button</button>
+    <button id="flushButton">Manual Flush</button>
+    <button id="checkIntervalButton">Check Flush Interval</button>
+
+    <script>
+        // Initialize the ytTracker queue
+        window.ytTracker = window.ytTracker || function() {
+            (window.ytTracker.q = window.ytTracker.q || []).push(arguments);
+        };
+        ytTracker.l = +new Date();
+
+        // Function to initialize the tracker
+        function initializeTracker() {
+            if (window.YourTracker && typeof window.YourTracker.init === 'function') {
+                console.log('Calling init function');
+                window.YourTracker.init('YT-XXXX-XX', {
+                    debug: false,
+                    endpoint: 'http://localhost:4000/track',
+                    flushInterval: 5000  // 5 seconds for easier debugging
+                });
+            } else {
+                console.log('Tracker not ready, retrying in 100ms');
+                setTimeout(initializeTracker, 100);
+            }
+        }
+
+        // Load the tracker script
+        (function() {
+            var script = document.createElement('script');
+            script.async = true;
+            script.src = 'http://localhost:8080/tracker.js';
+            script.onload = function() {
+                console.log('Tracker script loaded, attempting to initialize');
+                initializeTracker();
+            };
+            var firstScript = document.getElementsByTagName('script')[0];
+            firstScript.parentNode.insertBefore(script, firstScript);
+        })();
+
+        // Test custom event
+        setTimeout(function() {
+            ytTracker('track', 'test_event', {test: 'data'});
+        }, 2000);
+
+        // Test click event
+        document.getElementById('testButton').addEventListener('click', function() {
+            console.log('Button clicked');
+            ytTracker('track', 'button_click', {buttonId: 'testButton'});
+        });
+
+        // Manual flush
+        document.getElementById('flushButton').addEventListener('click', function() {
+            console.log('Manual flush triggered');
+            if (window.YourTracker && typeof window.YourTracker.flush === 'function') {
+                window.YourTracker.flush();
+            } else {
+                console.log('Tracker not initialized, cannot flush');
+            }
+        });
+
+        // Check flush interval
+        document.getElementById('checkIntervalButton').addEventListener('click', function() {
+            console.log('Checking tracker state');
+            if (window.YourTracker) {
+                console.log('Tracker instance:', window.YourTracker);
+                console.log('Flush interval ID:', window.YourTracker.flushIntervalId);
+                console.log('Current config:', window.YourTracker.config);
+                console.log('Initialized:', window.YourTracker.initialized);
+            } else {
+                console.log('Tracker instance not found');
+            }
+        });
+    </script>
+</body>
+</html>
