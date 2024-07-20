@@ -3,7 +3,7 @@
     this.queue = [];
     this.config = {
       clientId: null,
-      endpoint: 'https://api.yourcompany.com/track',
+      endpoint: 'http://localhost:3000/track',
       batchSize: 10,
       flushInterval: 10000
     };
