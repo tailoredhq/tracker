@@ -1,25 +1,111 @@
 (function(window, document) {
+   // Persistence module
+   var Persistence = function(config) {
+    this.config = {
+      visitorIdCookieKey: 'yt_visitor_id',
+      userIdCookieKey: 'yt_user_id',
+      visitorIdLocalStorageKey: 'yt_visitor_id',
+      userIdLocalStorageKey: 'yt_user_id',
+      localStorageKeyPrefix: 'yt_',
+      cookieExpiry: 365 * 24 * 60 * 60 * 1000, // 1 year in milliseconds
+    };
+    Object.assign(this.config, config);
+  };
+
+  Persistence.prototype = {
+    getVisitorId: function() {
+      return this.getCookie(this.config.visitorIdCookieKey) || 
+             this.getLocalStorage(this.config.visitorIdLocalStorageKey);
+    },
+
+    getUserId: function() {
+      return this.getCookie(this.config.userIdCookieKey) || 
+             this.getLocalStorage(this.config.userIdLocalStorageKey);
+    },
+
+    setVisitorId: function(visitorId) {
+      this.setCookie(this.config.visitorIdCookieKey, visitorId, this.config.cookieExpiry);
+      this.setLocalStorage(this.config.visitorIdLocalStorageKey, visitorId);
+    },
+
+    setUserId: function(userId) {
+      if (userId) {
+        this.setCookie(this.config.userIdCookieKey, userId, this.config.cookieExpiry);
+        this.setLocalStorage(this.config.userIdLocalStorageKey, userId);
+      } else {
+        this.deleteCookie(this.config.userIdCookieKey);
+        this.removeLocalStorage(this.config.userIdLocalStorageKey);
+      }
+    },
+
+    setCookie: function(name, value, expiryMs) {
+      var date = new Date();
+      date.setTime(date.getTime() + expiryMs);
+      var expires = "expires=" + date.toUTCString();
+      document.cookie = name + "=" + value + ";" + expires + ";path=/;SameSite=Lax";
+    },
+
+    getCookie: function(name) {
+      name = name + "=";
+      var decodedCookie = decodeURIComponent(document.cookie);
+      var cookieArray = decodedCookie.split(';');
+      
+      for (var i = 0; i < cookieArray.length; i++) {
+        var cookie = cookieArray[i];
+        while (cookie.charAt(0) == ' ') {
+          cookie = cookie.substring(1);
+        }
+        if (cookie.indexOf(name) == 0) {
+          return cookie.substring(name.length, cookie.length);
+        }
+      }
+      return null;
+    },
+
+    deleteCookie: function(name) {
+      document.cookie = name + "=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    },
+
+    setLocalStorage: function(key, value) {
+      try {
+        localStorage.setItem(key, value);
+      } catch (e) {
+        console.warn('Local storage is not available:', e);
+      }
+    },
+
+    getLocalStorage: function(key) {
+      try {
+        return localStorage.getItem(key);
+      } catch (e) {
+        console.warn('Local storage is not available:', e);
+        return null;
+      }
+    },
+
+    removeLocalStorage: function(key) {
+      try {
+        localStorage.removeItem(key);
+      } catch (e) {
+        console.warn('Local storage is not available:', e);
+      }
+    }
+  };
+
   var YourTracker = function() {
     this.queue = [];
     this.config = {
       clientId: null,
-      endpoint: 'http://localhost:4000/track',
+      // endpoint: 'http://localhost:4000/track',
+      endpoint: 'https://tracker-api.socialkaat.com/track',
       batchSize: 10,
       flushInterval: 10000, // 5 seconds for easier debugging
-      debug: true,  // Enable debug mode by default
-
-      // cookies
-      visitorIdCookie: 'yt_visitor_id',
-      userIdCookie: 'yt_user_id',
-      localStorageKeyPrefix: 'yt_',
-      cookieExpiry: 365 * 24 * 60 * 60 * 1000, // 1 year in milliseconds
+      debug: false,  // Enable debug mode by default
     };
 
-    this.visitorId = localStorage.getItem('yt_visitorId') || this.generateUUID();
-    localStorage.setItem('yt_visitorId', this.visitorId);
-
-    const test = this.generateUUID();
-    console.log('--->', test)
+    this.persistence = new Persistence(this.config);
+    this.visitorId = this.persistence.getVisitorId() || this.generateUUID();
+    this.persistence.setVisitorId(this.visitorId);
     
     this.flushIntervalId = null;  // Add this line
     this.initialized = false;
@@ -60,94 +146,12 @@
       });
     },
 
-    /**
-     * Setting / Getting visitorId and userId
-     */
     getVisitorId: function() {
-      // var visitorId = this.getCookie(this.config.visitorIdCookie) || this.getLocalStorage(this.config.localStorageKeyPrefix + 'visitor_id');
-      console.log("HERE", visitorId)
-      // if (!visitorId) {
-      //   visitorId = this.generateUUID();
-      //   this.setVisitorId(visitorId);
-      // }
-      // return visitorId;
+      return this.persistence.getVisitorId();
     },
+
     getUserId: function() {
-      return this.getCookie(this.config.userIdCookie) || this.getLocalStorage(this.config.localStorageKeyPrefix + 'user_id') || null;
-    },
-    setVisitorId: function() {
-      this.setCookie(this.config.visitorIdCookie, visitorId, this.config.cookieExpiry);
-      this.setLocalStorage(this.config.localStorageKeyPrefix + 'visitor_id', visitorId);
-    },
-    setUserId: function() {
-      if (userId) {
-        this.setCookie(this.config.userIdCookie, userId, this.config.cookieExpiry);
-        this.setLocalStorage(this.config.localStorageKeyPrefix + 'user_id', userId);
-      } else {
-        this.deleteCookie(this.config.userIdCookie);
-        this.removeLocalStorage(this.config.localStorageKeyPrefix + 'user_id');
-      }
-      this.userId = userId;
-    },
-
-    // Cookie and LocalStorage helpers
-    setCookie: function(name, value, expiryMs) {
-      var date = new Date();
-      date.setTime(date.getTime() + expiryMs);
-      var expires = "expires=" + date.toUTCString();
-      document.cookie = name + "=" + value + ";" + expires + ";path=/;SameSite=Lax";
-    },
-  
-    getCookie: function(name) {
-      // Add the '=' to the name to ensure we match the full cookie name
-      name = name + "=";
-      // Split the cookie string into an array of individual cookies
-      var decodedCookie = decodeURIComponent(document.cookie);
-      var cookieArray = decodedCookie.split(';');
-      
-      // Loop through the array to find our specific cookie
-      for (var i = 0; i < cookieArray.length; i++) {
-        var cookie = cookieArray[i];
-        // Remove any leading spaces
-        while (cookie.charAt(0) == ' ') {
-          cookie = cookie.substring(1);
-        }
-        // If we find the cookie name at the start of the string, return its value
-        if (cookie.indexOf(name) == 0) {
-          return cookie.substring(name.length, cookie.length);
-        }
-      }
-      // Return null if the cookie wasn't found
-      return null;
-    },
-  
-    deleteCookie: function(name) {
-      document.cookie = name + "=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-    },
-
-    setLocalStorage: function(key, value) {
-      try {
-        localStorage.setItem(key, value);
-      } catch (e) {
-        console.warn('Local storage is not available:', e);
-      }
-    },
-  
-    getLocalStorage: function(key) {
-      try {
-        return localStorage.getItem(key);
-      } catch (e) {
-        console.warn('Local storage is not available:', e);
-        return null;
-      }
-    },
-  
-    removeLocalStorage: function(key) {
-      try {
-        localStorage.removeItem(key);
-      } catch (e) {
-        console.warn('Local storage is not available:', e);
-      }
+      return this.persistence.getUserId();
     },
 
     // Actually tracking functions
@@ -164,11 +168,8 @@
       this.debug('Identifying user:', userId, userProperties);
 
       // store current visitorId to send to server
-      visitorId = this.visitorId
-
-      // update visitor id with userId
-      this.visitorId = userId;
-      localStorage.setItem('yt_visitorId', this.visitorId);
+      visitorId = this.getVisitorId()
+      this.persistence.setUserId(userId);
 
       //  send event to server directly on identify, don't queue
       fetch(this.config.endpoint, {
@@ -211,7 +212,7 @@
         action: action,
         name: eventName,
         data: eventData,
-        userId,
+        userId: userId || this.getUserId() || null,
         userProperties,
         timestamp: new Date().toISOString()
       });
@@ -314,15 +315,29 @@
     trackClicks: function() {
       this.debug('Setting up click tracking');
       document.addEventListener('click', (e) => {
-        let target = e.target;
-        console.log('---------------------------------------')
-        console.log(target)
+        var target = e.target;
+        // Get the clicked element and its ancestors
+        let elementPath = this.getElementPath(target);
+        
+        // Get surrounding text
+        let surroundingText = this.getSurroundingText(target);
+
+        var textContent = target.textContent ? target.textContent.trim().slice(0, 500) : null;
+        if (!textContent && target.value) {
+          textContent = target.value;
+        }
+
+        // console.log('---------------------------------------')
+        // console.log('TEXT CONTENT', textContent)
+        // console.log('SURROUNDING TEXT', surroundingText)
+
         this.track('click', {
           element: {
             tagName: target.tagName.toLowerCase(),
             id: target.id || null,
             className: target.className || null,
-            textContent: target.textContent ? target.textContent.trim().slice(0, 50) : null,
+            textContent,
+            surroundingText
           },
           page: {
             url: window.location.href,
@@ -414,6 +429,47 @@
       // Clear the queue
       window.ytTracker.q = [];
       this.debug('Queue processing complete');
+    },
+
+    getElementPath: function(element) {
+      let path = [];
+      while (element && element.nodeType === Node.ELEMENT_NODE) {
+        let selector = element.nodeName.toLowerCase();
+        if (element.id) {
+          selector += '#' + element.id;
+        } else {
+          let sibling = element;
+          let siblingIndex = 1;
+          while (sibling = sibling.previousElementSibling) {
+            if (sibling.nodeName.toLowerCase() == selector) siblingIndex++;
+          }
+          if (siblingIndex !== 1) selector += ':nth-of-type('+siblingIndex+')';
+        }
+        path.unshift(selector);
+        element = element.parentNode;
+      }
+      return path.join(' > ');
+    },
+
+    getSurroundingText: function(element, charLimit = 1000) {
+      // Start from the parent of the clicked element
+      let container = element.parentNode;
+      let text = '';
+      
+      // Move up the DOM tree until we have enough context or reach the body
+      while (container && container !== document.body) {
+        text = container.innerText || container.textContent || '';
+        text = text.trim();
+        if (text.length > charLimit) break;
+        container = container.parentNode;
+      }
+      
+      // Truncate and add ellipsis if necessary
+      if (text.length > charLimit) {
+        text = text.substring(0, charLimit) + '...';
+      }
+      
+      return text;
     }
   };
 
@@ -438,4 +494,4 @@
   instance.debug('YourTracker setup complete');
 })(window, document);
 
-console.log('Tracker script loaded');
+console.log('Gandalf loaded');
